@@ -1,5 +1,16 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import pickle
+
+# Функция для сохранения результатов в файл
+def save_results(filename, results):
+    with open(filename, 'wb') as f:
+        pickle.dump(results, f)
+
+# Функция для загрузки результатов из файла
+def load_results(filename):
+    with open(filename, 'rb') as f:
+        return pickle.load(f)
 
 # Решатель ОДУ методом Хёйна
 def solve_ode(start, end, step, max_calls, tolerance, fs, initial_conditions):
@@ -9,8 +20,6 @@ def solve_ode(start, end, step, max_calls, tolerance, fs, initial_conditions):
     steps = []
     solutions = []
     coord = []
-
-    print(f"{t:13.6f}{step:13.6f}{0:13d}{0:13d}", *[f"{x:12.6f}" for x in v])
 
     def heun_step(t, v, h):
         k1 = fs(t, v, call_counter)
@@ -41,72 +50,92 @@ def solve_ode(start, end, step, max_calls, tolerance, fs, initial_conditions):
             steps.append(step)
             solutions.append(v.copy())
             coord.append(t)
-            print(f"{t:13.6f} {step:13.6f} {error:13.5e} {call_counter[0]:13d}", *[f"{x:12.6f}" for x in v])
 
     return steps, solutions, coord, len(steps), min(steps)
 
-# Функция-правая часть системы ОДУ
-def fs(t, v, kounter):
-    A = np.array([[-0.4, 0.02, 0], [0, 0.8, -0.1], [0.003, 0, 1]])
-    kounter[0] += 1
-    return np.dot(A, v)
+# Основная функция для запуска расчетов
+def main():
+    # Список значений заданной точности
+    eps_count = [0.01, 0.001, 0.0001, 0.00001]
 
-# Жестко заданные входные данные
-t_0 = 1.5
-T = 2.5
-h_0 = 0.1
-N_x = 10000
-eps = 0.0001
-initial_conditions = [1, 1, 2]
+    # Считать входные данные
+    t_0 = float(input())
+    T = float(input())
+    h_0 = float(input())
+    N_x = int(input())
+    eps = float(input())
+    n = int(input())
 
-# Решить систему ОДУ
-eps_count = [0.01, 0.001, 0.0001, 0.00001]
-results_list = []
+    # Считать код функции-правой части системы ОДУ
+    function_code = []
+    for _ in range(n + 3):
+        line = input()
+        function_code.append(line)
 
-for eps in eps_count:
-    steps, solutions, coord, num_steps, min_step = solve_ode(t_0, T, h_0, N_x, eps, fs, initial_conditions)
-    results_list.append((steps, solutions, coord, num_steps, min_step))
+    # Определить функцию-правую часть системы ОДУ
+    function_definition = "\n".join(function_code)
+    exec(function_definition, globals())
 
-# Построить графики
-fig, axes = plt.subplots(len(eps_count), 1, figsize=(8, 8))
-min_steps = []
-num_steps = []
+    # Проверка, что функция fs была определена
+    if not callable(globals().get('fs')):
+        print("Функция fs не была определена.")
+        return
 
-for i, (steps, solutions, coord, num_steps_eps, min_step) in enumerate(results_list):
-    axes[i].plot(coord, steps)
-    axes[i].set_xlabel("t")
-    axes[i].set_ylabel("h")
-    axes[i].set_title(f"Изменение шага по отрезку для разных значений заданной точности, eps={eps_count[i]}")
-    min_steps.append(min_step)
-    num_steps.append(num_steps_eps)
+    # Считать начальные условия
+    initial_conditions_str = input()
+    initial_conditions = [float(x) for x in initial_conditions_str.split()]
 
-plt.tight_layout()
-plt.show()
+    # Решить систему ОДУ для каждого значения eps и сохранить результаты
+    for eps in eps_count:
+        steps, solutions, coord, num_steps, min_step = solve_ode(t_0, T, h_0, N_x, eps, fs, initial_conditions)
+        save_results(f'results_eps_{eps}.pkl', (steps, solutions, coord, num_steps, min_step))
 
-fig, ax = plt.subplots(figsize=(12, 6))
-ax.semilogx(eps_count, min_steps)
-ax.set_xlabel('eps')
-ax.set_ylabel('Минимальный шаг')
-ax.set_title('Зависимость минимального шага от заданной точности')
-plt.show()
+    # Построить графики используя сохраненные результаты
+    min_steps = []
+    num_steps_list = []
 
-fig, ax = plt.subplots(figsize=(12, 6))
-ax.semilogx(eps_count, num_steps)
-ax.set_xlabel('eps')
-ax.set_ylabel('Количество шагов')
-ax.set_title('Зависимость числа шагов от заданной точности')
-plt.show()
+    fig, axes = plt.subplots(len(eps_count), 1, figsize=(8, 8))
+    for i, eps in enumerate(eps_count):
+        steps, solutions, coord, num_steps_eps, min_step = load_results(f'results_eps_{eps}.pkl')
+        axes[i].plot(coord, steps)
+        axes[i].set_xlabel("t")
+        axes[i].set_ylabel("h")
+        axes[i].set_title(f"Изменение шага по отрезку для разных значений заданной точности, eps={eps}")
+        min_steps.append(min_step)
+        num_steps_list.append(num_steps_eps)
 
-fig, axes = plt.subplots(len(eps_count), 1, figsize=(8, 8))
-for i, (steps, solutions, coord, _, _) in enumerate(results_list):
-    solutions = np.array(solutions)
-    for j in range(solutions.shape[1]):
-        axes[i].plot(coord, solutions[:, j], label=f'v{j+1}')
-    axes[i].set_xlabel("t")
-    axes[i].set_ylabel("Значение решения")
-    axes[i].set_title(f"Изменение решения, eps={eps_count[i]}")
-    axes[i].legend()
-    axes[i].grid(True)
+    plt.tight_layout()
+    plt.show()
 
-plt.tight_layout()
-plt.show()
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.semilogx(eps_count, min_steps)
+    ax.set_xlabel('eps')
+    ax.set_ylabel('Минимальный шаг')
+    ax.set_title('Зависимость минимального шага от заданной точности')
+    plt.show()
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.semilogx(eps_count, num_steps_list)
+    ax.set_xlabel('eps')
+    ax.set_ylabel('Количество шагов')
+    ax.set_title('Зависимость числа шагов от заданной точности')
+    plt.show()
+
+    fig, axes = plt.subplots(len(eps_count), 1, figsize=(8, 8))
+    for i, eps in enumerate(eps_count):
+        steps, solutions, coord, _, _ = load_results(f'results_eps_{eps}.pkl')
+        solutions = np.array(solutions)
+        for j in range(solutions.shape[1]):
+            axes[i].plot(coord, solutions[:, j], label=f'v{j+1}')
+        axes[i].set_xlabel("t")
+        axes[i].set_ylabel("Значение решения")
+        axes[i].set_title(f"Изменение решения, eps={eps}")
+        axes[i].legend()
+        axes[i].grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
+# Запуск основной функции
+if __name__ == "__main__":
+    main()
